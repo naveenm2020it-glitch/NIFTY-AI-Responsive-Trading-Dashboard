@@ -142,6 +142,7 @@ async def upload_option_chain(
             raise ValueError("CSV must contain expiry,strike,option_type,ltp,spot; oi,volume,iv,timestamp are optional.")
         parsed = []
         keys = set()
+        default_snapshot = datetime.now(IST).isoformat()
         for line_number, original in enumerate(reader, start=2):
             row = {(key or "").strip().lower(): (value or "").strip() for key, value in original.items()}
             expiry = parse_expiry(row["expiry"]).isoformat()
@@ -156,7 +157,7 @@ async def upload_option_chain(
                 raise ValueError(f"Line {line_number}: strike, LTP and spot must be positive; OI/volume non-negative; IV positive.")
             if iv is not None and iv > 500:
                 raise ValueError(f"Line {line_number}: IV must be expressed as a percentage, not a decimal.")
-            snapshot = parse_timestamp(row["timestamp"]).isoformat() if row.get("timestamp") else datetime.now(IST).isoformat()
+            snapshot = parse_timestamp(row["timestamp"]).isoformat() if row.get("timestamp") else default_snapshot
             key = (expiry, strike, option_type, snapshot)
             if key in keys:
                 raise ValueError(f"Line {line_number}: duplicate contract in snapshot.")
