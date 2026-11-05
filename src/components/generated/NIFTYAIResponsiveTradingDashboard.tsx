@@ -279,6 +279,8 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
   const [greeksSide, setGreeksSide] = useState<"CE" | "PE">("CE");
   const [greeksData, setGreeksData] = useState<any>(null);
   const [greeksStatus, setGreeksStatus] = useState("Upload a validated option-chain snapshot to calculate Greeks.");
+  const [entryEvaluation, setEntryEvaluation] = useState<any>(null);
+  const [entryStatus, setEntryStatus] = useState("Upload option-chain snapshots and 5-minute spot candles to evaluate an entry.");
   const [scenarioSpotMove, setScenarioSpotMove] = useState(50);
   const [scenarioIvMove, setScenarioIvMove] = useState(0);
   const [scenarioMinutes, setScenarioMinutes] = useState(15);
@@ -382,6 +384,31 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
       });
     return () => controller.abort();
   }, [uploadedChainMeta, greeksStrike, greeksSide, expiry, scenarioSpotMove, scenarioIvMove, scenarioMinutes]);
+
+  useEffect(() => {
+    if (!uploadedChainMeta || !greeksStrike || !expiry || expiry === "Nearest unexpired") {
+      setEntryEvaluation(null);
+      setEntryStatus("Select an expiry and upload option-chain snapshots.");
+      return;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({ symbol: "NIFTY", expiry, strike: String(greeksStrike), option_type: greeksSide });
+    setEntryStatus("Evaluating spot, premium, OI, volume and Greeks evidence…");
+    fetch("https://nifty-ai-trading-api.onrender.com/api/v1/entry-engine/evaluate?" + params.toString(), { signal: controller.signal })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || "Entry evaluation unavailable.");
+        setEntryEvaluation(result);
+        setEntryStatus(result.entry_state.replaceAll("_", " ") + " · " + result.snapshot_time_ist);
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") {
+          setEntryEvaluation(null);
+          setEntryStatus(error instanceof Error ? error.message : "Entry evaluation unavailable.");
+        }
+      });
+    return () => controller.abort();
+  }, [uploadedChainMeta, greeksStrike, greeksSide, expiry]);
 
   const visibleTrades = useMemo(() => historyFilter === "All outcomes" ? trades : trades.filter(t => historyFilter === "Winners" ? t.pnl > 0 : t.pnl < 0), [historyFilter, trades]);
   const go = (p: Page) => {
@@ -501,7 +528,24 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
         </div>
       </div>
       <p className="mt-3 text-[10px] text-[var(--muted)]">{greeksStatus} · Greeks are model estimates, not exchange-published values. Bid/ask and spread are not supplied by the current CSV schema.</p>
-    </Panel><Panel className="p-4 sm:p-5"><Head title="Positioning notes" /><div className="space-y-3 text-xs">{[["Call writing zone", "22,600 · sample"], ["Put writing zone", "22,400 · sample"], ["OI change interpretation", "Context required"], ["Max pain reliability", "Full-chain data needed"]].map(([a, b]) => <div key={a} className="flex justify-between border-b border-[var(--line)] pb-2 last:border-0"><span className="text-[var(--muted)]">{a}</span><b>{b}</b></div>)}</div></Panel></div>
+    </Panel><Panel className="p-4 sm:p-5">
+      <Head title="20-point entry opportunity" subtitle="Evidence-based setup scoring · not a trained probability." />
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[var(--soft)] p-3">
+        <div><Label>Entry state</Label><p className="mt-1 text-sm font-bold">{entryEvaluation?.entry_state?.replaceAll("_", " ") || "WAITING FOR DATA"}</p></div>
+        <div className="text-right"><Label>Evidence score</Label><p className="mt-1 text-2xl font-semibold tabular-nums">{entryEvaluation?.evidence_score ?? "—"}<span className="text-xs text-[var(--muted)]"> / 100</span></p></div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-[var(--line)] p-3"><Label>Premium target</Label><p className="mt-1 text-lg font-semibold text-emerald-700">+20 points</p></div>
+        <div className="rounded-xl border border-[var(--line)] p-3"><Label>Premium stop</Label><p className="mt-1 text-lg font-semibold text-rose-600">−10 points</p></div>
+      </div>
+      <div className="mt-3 space-y-2">
+        {(entryEvaluation?.evidence || []).map((item: any) => <div key={item.factor} className="flex items-start justify-between gap-3 border-b border-[var(--line)] pb-2 text-xs"><div><b>{item.factor.replaceAll("_", " ")}</b><p className="mt-0.5 text-[var(--muted)]">{item.interpretation || (item.value_pct !== undefined ? item.value_pct + "%" : item.value !== undefined ? String(item.value) : "")}</p></div><span className="font-semibold tabular-nums">{item.points}/{item.max_points}</span></div>)}
+      </div>
+      <p className="mt-3 text-[10px] text-[var(--muted)]">{entryStatus}</p>
+      {entryEvaluation?.missing_inputs?.length > 0 && <p className="mt-2 text-[10px] text-amber-700">Missing: {entryEvaluation.missing_inputs.join("; ")}</p>}
+      <p className="mt-2 text-[10px] text-[var(--muted)]">Target-first and stop-first probabilities are intentionally withheld until historical option-premium backtesting and calibration are complete. Paper entry is not enabled by this score.</p>
+    </Panel>
+    <Panel className="p-4 sm:p-5"><Head title="Positioning notes" /><div className="space-y-3 text-xs">{[["Call writing zone", "22,600 · sample"], ["Put writing zone", "22,400 · sample"], ["OI change interpretation", "Context required"], ["Max pain reliability", "Full-chain data needed"]].map(([a, b]) => <div key={a} className="flex justify-between border-b border-[var(--line)] pb-2 last:border-0"><span className="text-[var(--muted)]">{a}</span><b>{b}</b></div>)}</div></Panel></div>
   </div>;
   const predictions = () => <div className="space-y-5"><Panel className="p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><Head title="AI prediction engine" subtitle="Directional and trade-outcome probabilities shown separately across all horizons." /><Badge tone="amber">ILLUSTRATIVE OUTPUT</Badge></div><Segmented value={horizon} onChange={setHorizon} options={["5m", "15m", "30m", "60m"]} /><div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]"><div className="rounded-2xl border border-[var(--line)] bg-[var(--soft)]/70 p-4"><Label>{horizon} directional distribution</Label><div className="mt-4 space-y-4">{[["Bullish", pred.bull, "bg-emerald-600"], ["Bearish", pred.bear, "bg-rose-500"], ["Neutral", pred.neutral, "bg-slate-400"]].map(([name, value, color]) => <div key={String(name)}><div className="mb-1 flex justify-between text-xs"><span>{name}</span><b>{value}%</b></div><div className="h-2.5 overflow-hidden rounded-full bg-[var(--line)]"><div className={"h-full rounded-full " + color} style={{
                   width: value + "%"
