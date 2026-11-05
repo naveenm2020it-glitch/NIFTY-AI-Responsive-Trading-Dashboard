@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 type Page = "Overview" | "Option Chain" | "AI Predictions" | "Reversal Intel" | "Trading Signals" | "Paper Trading" | "Trade History" | "Analytics" | "Model Monitor";
 type Trade = {
   id: string;
@@ -275,6 +275,13 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
   const [optionUploadBusy, setOptionUploadBusy] = useState(false);
   const [uploadedChain, setUploadedChain] = useState<any[]>([]);
   const [uploadedChainMeta, setUploadedChainMeta] = useState<any>(null);
+  const [greeksStrike, setGreeksStrike] = useState<number | null>(null);
+  const [greeksSide, setGreeksSide] = useState<"CE" | "PE">("CE");
+  const [greeksData, setGreeksData] = useState<any>(null);
+  const [greeksStatus, setGreeksStatus] = useState("Upload a validated option-chain snapshot to calculate Greeks.");
+  const [scenarioSpotMove, setScenarioSpotMove] = useState(50);
+  const [scenarioIvMove, setScenarioIvMove] = useState(0);
+  const [scenarioMinutes, setScenarioMinutes] = useState(15);
   const outcomes: Record<string, {
     bias: string;
     bull: number;
@@ -343,6 +350,39 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
     const start = Math.floor((21 - n) / 2);
     return chain.slice(start, start + n);
   }, [range, uploadedChain]);
+  useEffect(() => {
+    if (!uploadedChainMeta || !greeksStrike || !expiry || expiry === "Nearest unexpired") {
+      setGreeksData(null);
+      setGreeksStatus("Upload a validated option-chain snapshot to calculate Greeks.");
+      return;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      symbol: "NIFTY",
+      expiry,
+      strike: String(greeksStrike),
+      option_type: greeksSide,
+      spot_move_points: String(scenarioSpotMove),
+      iv_change_points: String(scenarioIvMove),
+      minutes_ahead: String(scenarioMinutes)
+    });
+    setGreeksStatus("Calculating Greeks from the latest uploaded snapshot…");
+    fetch("https://nifty-ai-trading-api.onrender.com/api/v1/options/greeks?" + params.toString(), { signal: controller.signal })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || "Greeks calculation failed.");
+        setGreeksData(result);
+        setGreeksStatus("Snapshot-based estimate · " + result.snapshot_time_ist);
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") {
+          setGreeksData(null);
+          setGreeksStatus(error instanceof Error ? error.message : "Greeks unavailable.");
+        }
+      });
+    return () => controller.abort();
+  }, [uploadedChainMeta, greeksStrike, greeksSide, expiry, scenarioSpotMove, scenarioIvMove, scenarioMinutes]);
+
   const visibleTrades = useMemo(() => historyFilter === "All outcomes" ? trades : trades.filter(t => historyFilter === "Winners" ? t.pnl > 0 : t.pnl < 0), [historyFilter, trades]);
   const go = (p: Page) => {
     setActive(p);
@@ -438,7 +478,30 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
   const optionChain = () => <div className="space-y-5">
     <Panel className="p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><Head title="Advanced option-chain intelligence" subtitle="ATM ±10 strike workspace with CE and PE activity in separate columns." /><div className="flex flex-wrap gap-2"><Badge tone={uploadedChain.length ? "green" : "amber"}>{uploadedChain.length ? "CSV SNAPSHOT LOADED" : "DEMO DATA"}</Badge>{uploadedChainMeta ? <Badge tone="blue">ATM {uploadedChainMeta.atm_strike}</Badge> : <Badge tone="blue">ATM 22,550</Badge>}<Badge>21-strike full range</Badge></div><div className="mt-3 flex flex-wrap items-center gap-2"><label className="inline-flex cursor-pointer items-center rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-[10px] font-semibold hover:bg-[var(--soft)]">{optionUploadBusy ? "Uploading…" : "Upload option-chain CSV"}<input type="file" accept=".csv,text/csv" className="hidden" disabled={optionUploadBusy} onChange={e => { const file = e.target.files?.[0]; if (file) uploadOptionSnapshot(file); e.currentTarget.value = ""; }} /></label><span className="text-[10px] text-[var(--muted)]">{optionUploadStatus || "Upload one authorized snapshot to replace the illustrative chain."}</span></div></div><div className="flex flex-wrap gap-2"><SelectBox label="Expiry" value={expiry} onChange={setExpiry}>{uploadedChainMeta?.expiry && <option value={uploadedChainMeta.expiry}>{uploadedChainMeta.expiry}</option>}<option value="Nearest unexpired">Nearest unexpired</option><option value="Next expiry">Next expiry</option></SelectBox><SelectBox label="Range" value={range} onChange={setRange}><option>ATM ± 10</option><option>ATM ± 5</option><option>ATM only</option></SelectBox><SelectBox label="Type" value={optionType} onChange={setOptionType}><option>Both</option><option>CE only</option><option>PE only</option></SelectBox></div></div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"><Stat label="PCR (sample)" value="1.18" tone="blue" /><Stat label="Call OI concentration" value="22,500" detail="Illustrative strike" /><Stat label="Put OI concentration" value="22,400" detail="Illustrative strike" /><Stat label="Max pain" value="22,500" detail="Illustrative only" /></div></Panel>
     <Panel className="overflow-hidden"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] p-4 sm:px-5"><div><h2 className="text-sm font-semibold">Strike ladder</h2><p className="mt-1 text-[10px] text-[var(--muted)]">{expiry} · {uploadedChain.length ? "uploaded CSV snapshot · not live" : "synthetic values for layout testing only"}</p></div><span className="text-[10px] text-[var(--muted)]">Scroll horizontally on smaller screens →</span></div><div className="overflow-x-auto"><table className="w-full min-w-[960px] border-collapse text-[10px]"><thead><tr className="bg-[var(--soft)] text-[var(--muted)]">{optionType !== "PE only" && <th colSpan={5} className="border-b border-emerald-700/20 px-3 py-3 text-center font-bold text-emerald-700">CALL OPTIONS · CE</th>}<th rowSpan={2} className="border-x border-[var(--line)] px-4 py-3 text-center font-bold text-[var(--ink)]">STRIKE</th>{optionType !== "CE only" && <th colSpan={5} className="border-b border-rose-500/20 px-3 py-3 text-center font-bold text-rose-600">PUT OPTIONS · PE</th>}</tr><tr className="border-b border-[var(--line)]">{optionType !== "PE only" && ["LTP", "OI (L)", "Δ OI", "VOL (L)", "IV"].map(x => <th key={"c" + x} className="px-3 py-3 text-right font-medium">{x}</th>)}{optionType !== "CE only" && ["IV", "VOL (L)", "Δ OI", "OI (L)", "LTP"].map(x => <th key={"p" + x} className="px-3 py-3 text-right font-medium">{x}</th>)}</tr></thead><tbody>{rows.map(r => <tr key={r.strike} className={"border-b border-[var(--line)] last:border-0 hover:bg-[var(--soft)]/65 " + (r.strike === 22550 ? "bg-[#789b7b]/10" : "")}>{optionType !== "PE only" && [r.ce.toFixed(2), r.ceOi.toFixed(2), r.ceChg.toLocaleString("en-IN"), r.ceVol.toFixed(2), r.ceIv.toFixed(1)].map((x, i) => <td key={"ce" + i} className={"px-3 py-3 text-right " + (i === 0 ? "font-bold text-emerald-700" : "text-[var(--muted)]")}>{x}</td>)}<td className="border-x border-[var(--line)] px-4 py-3 text-center font-bold">{r.strike}{r.strike === 22550 && <div className="mt-0.5 text-[8px] font-bold text-emerald-700">ATM</div>}</td>{optionType !== "CE only" && [r.peIv.toFixed(1), r.peVol.toFixed(2), r.peChg.toLocaleString("en-IN"), r.peOi.toFixed(2), r.pe.toFixed(2)].map((x, i) => <td key={"pe" + i} className={"px-3 py-3 text-right " + (i === 4 ? "font-bold text-rose-600" : "text-[var(--muted)]")}>{x}</td>)}</tr>)}</tbody></table></div><div className="p-4 sm:px-5">{uploadedChainMeta && <p className="mb-2 text-[10px] text-[var(--muted)]">Snapshot {uploadedChainMeta.snapshot_time_ist} · Spot {uploadedChainMeta.spot} · Greeks are Black-Scholes estimates using an assumed 6% risk-free rate, not exchange Greeks.</p>}<Footnote /></div></Panel>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2"><Panel className="p-4 sm:p-5"><Head title="Greeks & quote details" subtitle="Detailed Greeks, bid/ask and spread are placeholders until a permitted source is connected." /><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Delta", "—"], ["Gamma", "—"], ["Theta", "—"], ["Vega", "—"], ["Bid", "—"], ["Ask", "—"], ["Spread", "—"], ["Last update", "No feed"]].map(([a, b]) => <div key={a} className="rounded-xl bg-[var(--soft)] p-3"><Label>{a}</Label><p className="mt-1 text-sm font-semibold">{b}</p></div>)}</div></Panel><Panel className="p-4 sm:p-5"><Head title="Positioning notes" /><div className="space-y-3 text-xs">{[["Call writing zone", "22,600 · sample"], ["Put writing zone", "22,400 · sample"], ["OI change interpretation", "Context required"], ["Max pain reliability", "Full-chain data needed"]].map(([a, b]) => <div key={a} className="flex justify-between border-b border-[var(--line)] pb-2 last:border-0"><span className="text-[var(--muted)]">{a}</span><b>{b}</b></div>)}</div></Panel></div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2"><Panel className="p-4 sm:p-5">
+      <Head title="Options Greeks intelligence" subtitle="Expiry-aware Black–Scholes estimates and a transparent premium sensitivity scenario." />
+      <div className="mb-3 flex flex-wrap gap-2">
+        <select className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-xs" value={greeksStrike ?? ""} onChange={e => setGreeksStrike(e.target.value ? Number(e.target.value) : null)} disabled={!uploadedChain.length}>
+          <option value="">Select strike</option>{uploadedChain.map((r: any) => <option key={r.strike} value={r.strike}>{r.strike}{r.is_atm ? " · ATM" : ""}</option>)}
+        </select>
+        <select className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-xs" value={greeksSide} onChange={e => setGreeksSide(e.target.value as "CE" | "PE")}><option value="CE">Call · CE</option><option value="PE">Put · PE</option></select>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {[[ "Delta", greeksData?.greeks?.delta ],[ "Gamma", greeksData?.greeks?.gamma ],[ "Theta / day", greeksData?.greeks?.theta_per_day ],[ "Vega / IV pt", greeksData?.greeks?.vega_per_1_iv_point ],[ "Rho / rate pt", greeksData?.greeks?.rho_per_1_rate_point ]].map(([label,value]) => <div key={String(label)} className="rounded-xl bg-[var(--soft)] p-3"><Label>{label}</Label><p className="mt-1 text-sm font-semibold tabular-nums">{value === undefined ? "—" : Number(value).toFixed(5)}</p></div>)}
+      </div>
+      <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
+        <Label>Premium sensitivity scenario · not a forecast</Label>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="text-xs text-[var(--muted)]">Spot move (points)<input type="number" value={scenarioSpotMove} onChange={e => setScenarioSpotMove(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-[var(--ink)]" /></label>
+          <label className="text-xs text-[var(--muted)]">IV change (percentage points)<input type="number" step="0.1" value={scenarioIvMove} onChange={e => setScenarioIvMove(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-[var(--ink)]" /></label>
+          <label className="text-xs text-[var(--muted)]">Minutes ahead<input type="number" min="0" max="240" value={scenarioMinutes} onChange={e => setScenarioMinutes(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-[var(--ink)]" /></label>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[["Delta effect",greeksData?.scenario?.delta_effect_points],["Gamma effect",greeksData?.scenario?.gamma_effect_points],["Vega effect",greeksData?.scenario?.vega_effect_points],["Theta effect",greeksData?.scenario?.theta_effect_points],["Est. premium change",greeksData?.scenario?.estimated_premium_change_points],["Est. premium",greeksData?.scenario?.estimated_premium],["Time to expiry (min)",greeksData?.time_to_expiry_minutes],["Snapshot LTP",greeksData?.premium_ltp]].map(([label,value]) => <div key={String(label)}><Label>{label}</Label><p className="mt-1 text-sm font-semibold tabular-nums">{value === undefined ? "—" : Number(value).toFixed(3)}</p></div>)}
+        </div>
+      </div>
+      <p className="mt-3 text-[10px] text-[var(--muted)]">{greeksStatus} · Greeks are model estimates, not exchange-published values. Bid/ask and spread are not supplied by the current CSV schema.</p>
+    </Panel><Panel className="p-4 sm:p-5"><Head title="Positioning notes" /><div className="space-y-3 text-xs">{[["Call writing zone", "22,600 · sample"], ["Put writing zone", "22,400 · sample"], ["OI change interpretation", "Context required"], ["Max pain reliability", "Full-chain data needed"]].map(([a, b]) => <div key={a} className="flex justify-between border-b border-[var(--line)] pb-2 last:border-0"><span className="text-[var(--muted)]">{a}</span><b>{b}</b></div>)}</div></Panel></div>
   </div>;
   const predictions = () => <div className="space-y-5"><Panel className="p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><Head title="AI prediction engine" subtitle="Directional and trade-outcome probabilities shown separately across all horizons." /><Badge tone="amber">ILLUSTRATIVE OUTPUT</Badge></div><Segmented value={horizon} onChange={setHorizon} options={["5m", "15m", "30m", "60m"]} /><div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]"><div className="rounded-2xl border border-[var(--line)] bg-[var(--soft)]/70 p-4"><Label>{horizon} directional distribution</Label><div className="mt-4 space-y-4">{[["Bullish", pred.bull, "bg-emerald-600"], ["Bearish", pred.bear, "bg-rose-500"], ["Neutral", pred.neutral, "bg-slate-400"]].map(([name, value, color]) => <div key={String(name)}><div className="mb-1 flex justify-between text-xs"><span>{name}</span><b>{value}%</b></div><div className="h-2.5 overflow-hidden rounded-full bg-[var(--line)]"><div className={"h-full rounded-full " + color} style={{
                   width: value + "%"
