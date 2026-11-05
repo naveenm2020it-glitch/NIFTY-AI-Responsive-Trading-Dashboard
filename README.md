@@ -56,3 +56,11 @@ Optional columns: `oi,volume,iv,timestamp`.
 Endpoints:
 - `POST /api/v1/options/chain/upload?symbol=NIFTY`
 - `GET /api/v1/options/chain?symbol=NIFTY&expiry=YYYY-MM-DD&strikes_each_side=10`
+
+
+## Paper-trading safety engine (snapshot-driven)
+Backend endpoints:
+- `GET /api/v1/paper/status` — recent paper positions and execution constraints.
+- `POST /api/v1/paper/positions/open?expiry=YYYY-MM-DD&strike=...&option_type=CE&quantity=1` — opens only when a matching contract exists in the latest uploaded option snapshot.
+- `POST /api/v1/paper/positions/refresh` — checks the open position against the latest uploaded snapshot and closes at +20 premium points or -10 premium points when crossed.
+Safety rules: one open position globally, long CE/PE only, no broker order routing. This is snapshot-driven paper execution, not live automatic monitoring; it requires fresh uploaded quotes and a manual refresh request. The SQLite database remains ephemeral on the current Render filesystem.
