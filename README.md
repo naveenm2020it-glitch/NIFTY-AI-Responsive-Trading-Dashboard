@@ -37,3 +37,22 @@ Required columns: `timestamp,open,high,low,close`; optional: `volume`.
 - Read imported rows from `GET /api/v1/data/candles?symbol=NIFTY50&limit=500`.
 - The default SQLite database is on Render's ephemeral filesystem. Configure `NIFTY_DB_PATH` to a persistent mounted disk before relying on storage across restarts.
 - Live market/option-chain feeds, AI predictions and paper execution remain disabled until separately implemented and validated.
+
+
+## Option-chain CSV snapshot import
+The Option Chain tab supports uploading one CSV snapshot through the backend. Required columns:
+`expiry,strike,option_type,ltp,spot`
+Optional columns: `oi,volume,iv,timestamp`.
+- `expiry` format: `YYYY-MM-DD`
+- `option_type`: `CE` or `PE`
+- `iv`: percentage value (for example, 18.5 means 18.5%)
+- `timestamp`: optional ISO timestamp; naive timestamps are interpreted as IST. If omitted, one shared upload timestamp is assigned to all rows.
+- Upload one expiry and one underlying spot/snapshot time per file.
+- The chain endpoint returns the nearest listed strike to spot as ATM and up to 10 available strikes on either side.
+- Greeks are Black-Scholes estimates using an explicitly disclosed 6% annual risk-free-rate assumption; they are not exchange-provided Greeks.
+- A CSV upload is a historical/manual snapshot, not a live or automatically refreshing market feed.
+- Missing contracts are left blank; no quotes are synthesized.
+
+Endpoints:
+- `POST /api/v1/options/chain/upload?symbol=NIFTY`
+- `GET /api/v1/options/chain?symbol=NIFTY&expiry=YYYY-MM-DD&strikes_each_side=10`
