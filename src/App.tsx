@@ -1,24 +1,7 @@
-import { Theme } from './settings/types';
 import { NIFTYAIResponsiveTradingDashboard } from './components/generated/NIFTYAIResponsiveTradingDashboard';
 
-let theme: Theme = 'light';
-
 function App() {
-  function setTheme(theme: Theme) {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }
-
-  setTheme(theme);
-
-  return (
-    <>
-      <NIFTYAIResponsiveTradingDashboard />
-    </>
-  ); // %EXPORT_STATEMENT%
+  return <NIFTYAIResponsiveTradingDashboard />;
 }
 
 export default App;
