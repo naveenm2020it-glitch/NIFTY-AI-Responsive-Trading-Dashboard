@@ -433,22 +433,34 @@ export const NIFTYAIResponsiveTradingDashboard = () => {
     fontFamily: "Inter, ui-sans-serif, system-ui"
   }}>
     <style>{themeCss}</style>
-    <div className="flex min-h-screen">
-      <aside className={(mobileOpen ? "fixed inset-y-0 left-0 z-50 flex w-[270px]" : "hidden") + " border-r border-[var(--line)] bg-[var(--sidebar)] px-4 py-5 backdrop-blur-2xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[252px] lg:shrink-0 lg:flex-col"}>
-        <div className="flex items-center gap-3 px-2"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#587e61] text-lg font-bold text-white shadow-sm">N</div><div className="min-w-0"><p className="text-sm font-extrabold tracking-[.08em]">NIFTY <span className="text-[#729879]">AI</span></p><p className="mt-0.5 text-[9px] font-semibold tracking-[.19em] text-[var(--muted)]">OPTIONS INTELLIGENCE</p></div><button className="ml-auto rounded-lg p-2 text-[var(--muted)] lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close menu">✕</button></div>
-        <div className="mt-8 space-y-5">{["Workspace", "Intelligence", "Execution", "Reports", "System"].map(group => <div key={group}><p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">{group}</p><nav className="space-y-1">{nav.filter(n => n.group === group).map(n => <button key={n.label} onClick={() => go(n.label)} className={"flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[12px] font-semibold transition " + (active === n.label ? "bg-[#6d9674]/15 text-[var(--ink)] ring-1 ring-[#6d9674]/20" : "text-[var(--muted)] hover:bg-[var(--soft)] hover:text-[var(--ink)]")}><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--soft)] text-sm">{n.icon}</span><span>{n.label}</span>{n.label === "Trading Signals" && <span className="ml-auto h-2 w-2 rounded-full bg-amber-500" />}</button>)}</nav></div>)}</div>
-        <div className="mt-auto space-y-3 pt-6"><div className="rounded-2xl border border-amber-500/20 bg-amber-500/[.07] p-3"><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-amber-500" /><span className="text-[10px] font-bold text-amber-800 dark:text-amber-200">DEMO ENVIRONMENT</span></div><p className="mt-2 text-[9px] leading-relaxed text-[var(--muted)]">Synthetic preview values only. No live data provider or trained AI model is connected.</p></div><div className="flex items-center gap-3 px-2"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#dce7d8] text-xs font-bold text-[#42634b]">TR</div><div><p className="text-[11px] font-semibold">Trader workspace</p><p className="text-[9px] text-[var(--muted)]">Local UI preview</p></div></div></div>
-      </aside>
-      {mobileOpen && <button className="fixed inset-0 z-40 bg-slate-950/35 lg:hidden" aria-label="Close navigation overlay" onClick={() => setMobileOpen(false)} />}
-      <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--canvas)]/85 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8"><div className="mx-auto flex max-w-[1560px] items-center gap-3"><button onClick={() => setMobileOpen(true)} className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-2.5 text-sm lg:hidden" aria-label="Open navigation">☰</button><div className="min-w-0 flex-1"><div className="text-[9px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">NIFTY 50 · INDIA</div><h1 className="truncate text-base font-bold sm:text-lg">{active}</h1></div><div className="hidden items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[9px] font-extrabold tracking-wide text-amber-800 dark:text-amber-200 sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />DEMO · NOT LIVE</div><button onClick={() => setDark(!dark)} className="flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2.5 text-[10px] font-bold" aria-label="Toggle colour theme"><span>{dark ? "☾" : "☀"}</span><span className="hidden sm:inline">{dark ? "Dark" : "Light"}</span></button><button onClick={() => setNotice("Settings are a UI placeholder. Data-source configuration will be connected in the backend phase.")} className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-2.5 text-sm" aria-label="Settings">⚙</button></div></header>
-        <div className="mx-auto max-w-[1560px] space-y-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold">Market intelligence workspace</p><p className="mt-1 text-[10px] text-[var(--muted)]">Thursday, 05 November 2026 · India Standard Time (IST)</p></div><div className="flex flex-wrap items-center gap-2"><Badge tone="blue">NIFTY 50</Badge><Badge>09:15–15:30 IST</Badge><Badge tone="amber">Feed disconnected</Badge></div></div>
-          {views[active]()}
-          <footer className="flex flex-wrap justify-between gap-2 border-t border-[var(--line)] py-4 text-[9px] text-[var(--muted)]"><span>NIFTY AI · Options intelligence terminal</span><span>Demo interface · No broker orders · Not investment advice</span></footer>
+    <main className="min-h-screen w-full min-w-0">
+      <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--canvas)]/95 px-3 py-3 backdrop-blur-xl sm:px-5 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#587e61] text-base font-extrabold text-white shadow-sm">N</div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-extrabold tracking-[.08em]">NIFTY <span className="text-[#729879]">AI</span></p>
+            <p className="hidden text-[9px] font-semibold tracking-[.15em] text-[var(--muted)] sm:block">OPTIONS INTELLIGENCE TERMINAL</p>
+          </div>
+          <div className="hidden items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[9px] font-extrabold tracking-wide text-amber-800 dark:text-amber-200 sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />DEMO · NOT LIVE</div>
+          <button onClick={() => setDark(!dark)} className="flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2.5 text-[10px] font-bold" aria-label="Toggle colour theme"><span>{dark ? "☾" : "☀"}</span><span className="hidden sm:inline">{dark ? "Dark" : "Light"}</span></button>
+          <button onClick={() => setNotice("Settings are a UI placeholder. Data-source configuration is not connected yet.")} className="shrink-0 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-2.5 text-sm" aria-label="Settings">⚙</button>
         </div>
-      </main>
-    </div>
+        <nav aria-label="Dashboard sections" className="mx-auto mt-3 flex max-w-[1600px] gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+          {nav.map(n => <button key={n.label} onClick={() => go(n.label)} aria-current={active === n.label ? "page" : undefined} className={"inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-bold transition sm:px-3.5 sm:text-[11px] " + (active === n.label ? "border-[#6d9674]/35 bg-[#6d9674]/15 text-[var(--ink)] shadow-sm" : "border-transparent bg-[var(--panel)]/55 text-[var(--muted)] hover:border-[var(--line)] hover:bg-[var(--soft)] hover:text-[var(--ink)]")}>
+            <span aria-hidden="true" className="text-sm">{n.icon}</span><span>{n.label}</span>
+            {n.label === "Trading Signals" && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+          </button>)}
+        </nav>
+      </header>
+      <div className="mx-auto max-w-[1600px] space-y-5 px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><p className="text-xs font-semibold">Market intelligence workspace</p><p className="mt-1 text-[10px] text-[var(--muted)]">India Standard Time (IST) · Market session 09:15–15:30</p></div>
+          <div className="flex flex-wrap items-center gap-2"><Badge tone="blue">NIFTY 50</Badge><Badge>IST</Badge><Badge tone="amber">Feed disconnected</Badge></div>
+        </div>
+        {views[active]()}
+        <footer className="flex flex-wrap justify-between gap-2 border-t border-[var(--line)] py-4 text-[9px] text-[var(--muted)]"><span>NIFTY AI · Options intelligence terminal</span><span>Demo interface · No broker orders · Not investment advice</span></footer>
+      </div>
+    </main>
     {notice && <div role="status" className="fixed bottom-4 right-4 z-[60] flex max-w-sm items-start gap-3 rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4 text-xs shadow-2xl backdrop-blur-xl"><p className="flex-1 leading-relaxed">{notice}</p><button className="text-[var(--muted)]" aria-label="Dismiss notice" onClick={() => setNotice("")}>✕</button></div>}
   </div>;
 };
