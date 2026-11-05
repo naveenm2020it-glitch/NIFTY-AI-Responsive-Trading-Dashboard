@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from backend.research import router as research_router
 from backend.greeks import router as greeks_router
+from backend.entry_engine import router as entry_engine_router
 from fastapi.middleware.cors import CORSMiddleware
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -30,6 +31,7 @@ app.add_middleware(
 )
 app.include_router(research_router)
 app.include_router(greeks_router)
+app.include_router(entry_engine_router)
 
 
 def connect_db():
