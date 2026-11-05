@@ -27,3 +27,13 @@ Responsive React + Vite dashboard with a FastAPI backend foundation.
 4. Train and validate CPU-friendly models with walk-forward testing and calibrated probabilities.
 5. Add backend-enforced paper-trading risk controls: +20 premium target, -10 stop, one concurrent position, CE/PE long-only.
 6. Add monitoring, audit logs and frontend API integration.
+
+
+## Validated historical candle CSV import
+The API accepts aligned 5-minute OHLC CSV uploads at `POST /api/v1/data/candles/upload?symbol=NIFTY50`.
+Required columns: `timestamp,open,high,low,close`; optional: `volume`.
+- Naive timestamps are interpreted as Asia/Kolkata; timezone-aware timestamps are converted to IST.
+- OHLC values, non-negative volume, duplicate timestamps and 5-minute timestamp alignment are checked.
+- Read imported rows from `GET /api/v1/data/candles?symbol=NIFTY50&limit=500`.
+- The default SQLite database is on Render's ephemeral filesystem. Configure `NIFTY_DB_PATH` to a persistent mounted disk before relying on storage across restarts.
+- Live market/option-chain feeds, AI predictions and paper execution remain disabled until separately implemented and validated.
