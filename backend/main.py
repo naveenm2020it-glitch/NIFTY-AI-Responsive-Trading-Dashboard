@@ -61,6 +61,26 @@ def connect_db():
             PRIMARY KEY (symbol, snapshot_time, expiry, strike, option_type)
         )
     """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            expiry TEXT NOT NULL,
+            strike REAL NOT NULL,
+            option_type TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            entry_premium REAL NOT NULL,
+            target_premium REAL NOT NULL,
+            stop_premium REAL NOT NULL,
+            current_premium REAL NOT NULL,
+            status TEXT NOT NULL,
+            opened_at TEXT NOT NULL,
+            closed_at TEXT,
+            exit_premium REAL,
+            exit_reason TEXT,
+            pnl REAL
+        )
+    """)
     db.commit()
     return db
 
@@ -242,6 +262,94 @@ def root():
 @app.get("/api/health")
 def health():
     return {"status": "ok", "timezone": "Asia/Kolkata"}
+
+
+
+
+@app.get("/api/v1/paper/status")
+def paper_status():
+    with connect_db() as db:
+        rows = db.execute("SELECT id,symbol,expiry,strike,option_type,quantity,entry_premium,target_premium,stop_premium,current_premium,status,opened_at,closed_at,exit_premium,exit_reason,pnl FROM paper_positions ORDER BY id DESC LIMIT 100").fetchall()
+    fields = ["id","symbol","expiry","strike","option_type","quantity","entry_premium","target_premium","stop_premium","current_premium","status","opened_at","closed_at","exit_premium","exit_reason","pnl"]
+    positions = [dict(zip(fields, row)) for row in rows]
+    return {"mode": "paper_only", "live_broker_orders": False, "max_concurrent_positions": 1, "target_points": 20, "stop_points": 10, "positions": positions}
+
+
+@app.post("/api/v1/paper/positions/open")
+def open_paper_position(
+    expiry: str = Query(..., description="Expiry date YYYY-MM-DD"),
+    strike: float = Query(..., gt=0),
+    option_type: str = Query(..., pattern="^(CE|PE)$"),
+    quantity: int = Query(default=1, ge=1, le=100000),
+    symbol: str = Query(default="NIFTY", min_length=1, max_length=32),
+):
+    try:
+        expiry_date = parse_expiry(expiry).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Expiry must be YYYY-MM-DD.") from exc
+    with connect_db() as db:
+        active = db.execute("SELECT COUNT(*) FROM paper_positions WHERE status='OPEN'").fetchone()[0]
+        if active:
+            raise HTTPException(status_code=409, detail="One-position limit reached. Close the existing paper position first.")
+        latest = db.execute(
+            "SELECT MAX(snapshot_time) FROM option_quotes WHERE symbol=? AND expiry=?",
+            (symbol.upper(), expiry_date),
+        ).fetchone()[0]
+        if not latest:
+            raise HTTPException(status_code=409, detail="No uploaded option-chain snapshot exists for this expiry.")
+        quote = db.execute(
+            "SELECT ltp FROM option_quotes WHERE symbol=? AND expiry=? AND snapshot_time=? AND strike=? AND option_type=?",
+            (symbol.upper(), expiry_date, latest, strike, option_type),
+        ).fetchone()
+        if not quote:
+            raise HTTPException(status_code=404, detail="Contract is absent from the latest uploaded snapshot.")
+        entry = float(quote[0])
+        now = datetime.now(IST).isoformat()
+        cursor = db.execute(
+            """INSERT INTO paper_positions(symbol,expiry,strike,option_type,quantity,entry_premium,target_premium,stop_premium,current_premium,status,opened_at)
+               VALUES(?,?,?,?,?,?,?,?,?,'OPEN',?)""",
+            (symbol.upper(), expiry_date, strike, option_type, quantity, entry, entry + 20.0, max(0.05, entry - 10.0), entry, now),
+        )
+        position_id = cursor.lastrowid
+        db.commit()
+    return {"status": "opened", "position_id": position_id, "symbol": symbol.upper(), "expiry": expiry_date, "strike": strike, "option_type": option_type, "quantity": quantity, "entry_premium": entry, "target_premium": entry + 20.0, "stop_premium": max(0.05, entry - 10.0), "opened_at_ist": now, "execution": "paper_only", "broker_order_sent": False}
+
+
+@app.post("/api/v1/paper/positions/refresh")
+def refresh_paper_position():
+    with connect_db() as db:
+        position = db.execute(
+            "SELECT id,symbol,expiry,strike,option_type,quantity,entry_premium,target_premium,stop_premium FROM paper_positions WHERE status='OPEN' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not position:
+            return {"status": "flat", "message": "No open paper position."}
+        pid, symbol, expiry, strike, option_type, qty, entry, target, stop = position
+        latest = db.execute(
+            "SELECT MAX(snapshot_time) FROM option_quotes WHERE symbol=? AND expiry=?",
+            (symbol, expiry),
+        ).fetchone()[0]
+        if not latest:
+            return {"status": "waiting_for_quote", "position_id": pid, "message": "No uploaded quote snapshot is available."}
+        quote = db.execute(
+            "SELECT ltp FROM option_quotes WHERE symbol=? AND expiry=? AND snapshot_time=? AND strike=? AND option_type=?",
+            (symbol, expiry, latest, strike, option_type),
+        ).fetchone()
+        if not quote:
+            return {"status": "waiting_for_quote", "position_id": pid, "message": "The latest snapshot does not contain this contract."}
+        current = float(quote[0])
+        reason = "TARGET" if current >= target else "STOP" if current <= stop else None
+        now = datetime.now(IST).isoformat()
+        if reason:
+            pnl = round((current - entry) * qty, 2)
+            db.execute(
+                "UPDATE paper_positions SET current_premium=?,status='CLOSED',closed_at=?,exit_premium=?,exit_reason=?,pnl=? WHERE id=?",
+                (current, now, current, reason, pnl, pid),
+            )
+            db.commit()
+            return {"status": "closed", "position_id": pid, "exit_reason": reason, "entry_premium": entry, "exit_premium": current, "quantity": qty, "pnl_points_times_quantity": pnl, "closed_at_ist": now, "execution": "paper_only"}
+        db.execute("UPDATE paper_positions SET current_premium=? WHERE id=?", (current, pid))
+        db.commit()
+        return {"status": "open", "position_id": pid, "current_premium": current, "unrealized_pnl_points_times_quantity": round((current-entry)*qty, 2), "target_premium": target, "stop_premium": stop, "quote_timestamp_ist": latest, "note": "Refresh evaluates only the latest uploaded CSV snapshot; no live polling is active."}
 
 
 @app.get("/api/v1/system/status")
